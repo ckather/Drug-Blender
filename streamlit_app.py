@@ -16,8 +16,14 @@ def load_file(uploaded_file):
     elif extension in [".xlsx", ".xls"]:
         return pd.read_excel(uploaded_file)
     else:
-        # Fallback or raise an error if needed
         raise ValueError(f"Unsupported file type: {extension}")
+
+# --- Helper function to color rows based on file source ---
+def color_rows_by_source(row, color_map):
+    """Return a list of CSS styles for each cell in a row based on the 'source_file' column."""
+    file_name = row["source_file"]
+    color = color_map.get(file_name, "#FFFFFF")  # default to white if not found
+    return [f"background-color: {color}"] * len(row)
 
 # --- Custom CSS for beautification ---
 st.markdown("""
@@ -36,16 +42,18 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- Vertical Navigation on the Left ---
-app_mode = st.sidebar.radio("Go to", ["Data Ingestion", "Data Summary", "About"])
+# --- Sidebar Navigation ---
+app_mode = st.sidebar.radio("Go to", ["Data Ingestion", "Master Document", "About"])
 
-# --- Data Ingestion Page (Landing Page) ---
+# ---------------------------
+# 1) DATA INGESTION PAGE
+# ---------------------------
 if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard")
     st.subheader("Data Ingestion")
-    st.write("Upload between 1 and 5 files (CSV or Excel). Each file should share a common key (e.g., `product_id`) so they can be merged.")
+    st.write("Upload between 1 and 5 files (CSV or Excel). Each file will be appended into a **Master Document** with color-coded rows.")
 
-    # Container for styled file uploader
+    # File uploader
     with st.container():
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
         uploaded_files = st.file_uploader(
@@ -60,49 +68,86 @@ if app_mode == "Data Ingestion":
             st.warning("Please upload a maximum of 5 files.")
         else:
             try:
-                # Read each uploaded file into a DataFrame
-                df_list = [load_file(file) for file in uploaded_files]
+                df_list = []
                 
-                # Merge dataframes sequentially on the common key 'product_id'
-                merged_df = df_list[0]
-                for df in df_list[1:]:
-                    merged_df = pd.merge(merged_df, df, on='product_id', how='outer')
+                # We’ll define a color palette for up to 5 files
+                color_palette = ["#FFCFCF", "#CFFFCF", "#CFCFFF", "#FFFACF", "#FFCFFF"]
                 
-                # Store merged data for later use
-                st.session_state['merged_df'] = merged_df
+                # Build a color map (file_name -> color)
+                color_map = {}
                 
-                st.success("Files uploaded and merged successfully!")
-                st.dataframe(merged_df.head())
+                for i, file in enumerate(uploaded_files):
+                    # Load each file
+                    df = load_file(file)
+                    
+                    # Add a column to track the source file
+                    df["source_file"] = file.name
+                    
+                    # Assign a color to this file (by index)
+                    color_map[file.name] = color_palette[i]
+                    
+                    df_list.append(df)
+                
+                # Concatenate all dataframes (a "stack" of rows)
+                master_df = pd.concat(df_list, ignore_index=True)
+                
+                # Store both the master_df and color_map for use in the Master Document tab
+                st.session_state["master_df"] = master_df
+                st.session_state["color_map"] = color_map
+                
+                st.success("Files uploaded and combined successfully!")
+                st.write("**Preview of Combined Data:**")
+                st.dataframe(master_df.head())
+            
             except Exception as e:
                 st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload at least one file to get started.")
 
-# --- Data Summary Page ---
-elif app_mode == "Data Summary":
-    st.header("Data Summary")
-    if 'merged_df' in st.session_state:
-        merged_df = st.session_state['merged_df']
-        st.dataframe(merged_df)
+# ---------------------------
+# 2) MASTER DOCUMENT PAGE
+# ---------------------------
+elif app_mode == "Master Document":
+    st.header("Master Document")
+    st.write("Below is the combined dataset with each file’s rows highlighted in a unique color.")
+    
+    if "master_df" in st.session_state and "color_map" in st.session_state:
+        master_df = st.session_state["master_df"]
+        color_map = st.session_state["color_map"]
         
-        # If there's a numeric column (e.g., 'value'), display its sum
-        if 'value' in merged_df.columns:
-            total_value = merged_df['value'].sum()
-            st.metric("Total Value", f"{total_value:,}")
+        # Create a styled DataFrame that highlights rows by source file
+        styled_df = master_df.style.apply(
+            lambda row: color_rows_by_source(row, color_map), 
+            axis=1
+        )
+        
+        # Display the styled DataFrame. Note that st.dataframe() won't preserve styling,
+        # so we use st.write() to render the HTML.
+        st.write(styled_df)
+        
+        # Optional: Show some summary stats
+        numeric_cols = master_df.select_dtypes(include=["int", "float"]).columns
+        if len(numeric_cols) > 0:
+            st.subheader("Numeric Column Summaries")
+            st.write(master_df.describe())
         else:
-            st.info("Column 'value' not found in the merged dataset.")
+            st.info("No numeric columns found to summarize.")
         
-        st.subheader("Summary Statistics")
-        st.write(merged_df.describe())
     else:
         st.warning("No data available. Please upload files in the Data Ingestion section.")
 
-# --- About Page ---
+# ---------------------------
+# 3) ABOUT PAGE
+# ---------------------------
 elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
-        This dashboard integrates multiple data sources (CSV or Excel) into one unified view—a single source of truth—for your pharmaceutical product.
-        Built with Python and Streamlit, it allows you to upload up to 5 files, merge them based on a common key (e.g., `product_id`),
-        and view comprehensive summaries and metrics.
+        This dashboard integrates multiple CSV or Excel files into one **Master Document**, color-coding rows based on the file of origin.
+        
+        **Key Features**  
+        - Upload between 1 and 5 CSV/Excel files  
+        - Combine them into a single table with each file’s rows highlighted  
+        - Preview and analyze the merged data in real-time  
+
+        Built with Python and Streamlit.
     """)
-    st.write("Developed using Python and Streamlit.")
