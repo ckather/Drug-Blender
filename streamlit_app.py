@@ -18,25 +18,26 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- Navigation using tabs ---
-tabs = st.tabs(["Home", "Data Ingestion", "Data Summary", "About"])
+# --- Vertical Navigation on the Left ---
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.radio("Go to", ["Home", "Data Ingestion", "Data Summary", "About"])
 
-# --- Home Tab ---
-with tabs[0]:
+# --- Home Page ---
+if app_mode == "Home":
     st.title("Pharmaceutical Data Dashboard")
-    st.subheader("Welcome to the Unified Data View")
-    st.write("This dashboard provides a single source of truth by integrating multiple data sources for your pharmaceutical product.")
+    st.subheader("Unified Data View")
+    st.write("Welcome to the Pharmaceutical Data Dashboard. This platform integrates multiple data sources into one source of truth for your pharmaceutical product.")
     st.image("https://via.placeholder.com/600x200.png?text=Pharmaceutical+Dashboard", use_column_width=True)
 
-# --- Data Ingestion Tab ---
-with tabs[1]:
+# --- Data Ingestion Page ---
+elif app_mode == "Data Ingestion":
     st.header("Data Ingestion")
     st.write("Upload at least 5 CSV files. Each file should share a common key (e.g., `product_id`) so they can be merged together.")
     
     # Container for styled file uploader
     with st.container():
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
-        uploaded_files = st.file_uploader("Upload CSV files", type=["csv"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("Upload CSV Files", type=["csv"], accept_multiple_files=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
     if uploaded_files:
@@ -50,16 +51,16 @@ with tabs[1]:
                 merged_df = df_list[0]
                 for df in df_list[1:]:
                     merged_df = pd.merge(merged_df, df, on='product_id', how='outer')
-                st.session_state['merged_df'] = merged_df  # Save for later use
-                st.success("Data loaded and merged successfully!")
+                st.session_state['merged_df'] = merged_df  # Save merged data for later use
+                st.success("Files uploaded and merged successfully!")
                 st.dataframe(merged_df.head())
             except Exception as e:
-                st.error(f"Error processing data: {e}")
+                st.error(f"An error occurred while processing the files: {e}")
     else:
-        st.info("Please upload your CSV files to begin.")
+        st.info("Please upload your CSV files to get started.")
 
-# --- Data Summary Tab ---
-with tabs[2]:
+# --- Data Summary Page ---
+elif app_mode == "Data Summary":
     st.header("Data Summary")
     if 'merged_df' in st.session_state:
         merged_df = st.session_state['merged_df']
@@ -70,25 +71,19 @@ with tabs[2]:
             total_value = merged_df['value'].sum()
             st.metric("Total Value", f"{total_value:,}")
         else:
-            st.info("Column 'value' not found. Ensure your data includes the correct numeric field.")
+            st.info("Column 'value' not found in the merged dataset.")
         
         st.subheader("Summary Statistics")
         st.write(merged_df.describe())
     else:
-        st.warning("No data found. Please upload data in the 'Data Ingestion' tab.")
+        st.warning("No data available. Please upload files in the Data Ingestion section.")
 
-# --- About Tab ---
-with tabs[3]:
+# --- About Page ---
+elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
-        This dashboard is designed to integrate multiple data sources into a single, unified view—a 'source of truth'—for a pharmaceutical product.
-        Using Python and Streamlit, it allows you to upload at least 5 CSV files, merge them on a common key (e.g., `product_id`), and visualize the aggregated data.
-        
-        **Key Features:**
-        - **Data Ingestion:** Upload multiple CSV files.
-        - **Data Integration:** Merge datasets based on a common identifier.
-        - **Data Visualization:** Explore summaries and metrics interactively.
-        
-        Developed with compliance and user-friendliness in mind.
+        This dashboard integrates multiple CSV data sources into one unified view—a single source of truth—for your pharmaceutical product.
+        Built with Python and Streamlit, it allows you to upload at least 5 files, merge them based on a common key (e.g., `product_id`),
+        and view comprehensive summaries and metrics.
     """)
     st.write("Developed using Python and Streamlit.")
