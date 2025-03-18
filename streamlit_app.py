@@ -27,7 +27,12 @@ if app_mode == "Home":
     st.title("Pharmaceutical Data Dashboard")
     st.subheader("Unified Data View")
     st.write("Welcome to the Pharmaceutical Data Dashboard. This platform integrates multiple data sources into one source of truth for your pharmaceutical product.")
-    st.image("https://via.placeholder.com/600x200.png?text=Pharmaceutical+Dashboard", use_column_width=True)
+    
+    # Updated to use_container_width instead of use_column_width
+    st.image(
+        "https://via.placeholder.com/600x200.png?text=Pharmaceutical+Dashboard", 
+        use_container_width=True
+    )
 
 # --- Data Ingestion Page ---
 elif app_mode == "Data Ingestion":
