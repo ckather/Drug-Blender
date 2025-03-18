@@ -19,50 +19,48 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- Vertical Navigation on the Left ---
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.radio("Go to", ["Home", "Data Ingestion", "Data Summary", "About"])
+# Data Ingestion is set as the first/landing page by placing it at index 0
+app_mode = st.sidebar.radio("Go to", ["Data Ingestion", "Data Summary", "About"])
 
-# --- Home Page ---
-if app_mode == "Home":
+# --- Data Ingestion Page (Landing Page) ---
+if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard")
-    st.subheader("Unified Data View")
-    st.write("Welcome to the Pharmaceutical Data Dashboard. This platform integrates multiple data sources into one source of truth for your pharmaceutical product.")
-    
-    # Updated to use_container_width instead of use_column_width
-    st.image(
-        "https://via.placeholder.com/600x200.png?text=Pharmaceutical+Dashboard", 
-        use_container_width=True
-    )
-
-# --- Data Ingestion Page ---
-elif app_mode == "Data Ingestion":
-    st.header("Data Ingestion")
-    st.write("Upload at least 5 CSV files. Each file should share a common key (e.g., `product_id`) so they can be merged together.")
+    st.subheader("Data Ingestion")
+    st.write("Upload between 1 and 5 CSV files. Each file should share a common key (e.g., `product_id`) so they can be merged together.")
     
     # Container for styled file uploader
     with st.container():
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
-        uploaded_files = st.file_uploader("Upload CSV Files", type=["csv"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader(
+            "Upload CSV Files (1–5)",
+            type=["csv"],
+            accept_multiple_files=True
+        )
         st.markdown('</div>', unsafe_allow_html=True)
     
     if uploaded_files:
-        if len(uploaded_files) < 5:
-            st.warning("Please upload at least 5 CSV files.")
+        # Check file count
+        if len(uploaded_files) > 5:
+            st.warning("Please upload a maximum of 5 CSV files.")
         else:
             try:
                 # Read each uploaded CSV into a DataFrame
                 df_list = [pd.read_csv(file) for file in uploaded_files]
+                
                 # Merge dataframes sequentially on the common key 'product_id'
                 merged_df = df_list[0]
                 for df in df_list[1:]:
                     merged_df = pd.merge(merged_df, df, on='product_id', how='outer')
-                st.session_state['merged_df'] = merged_df  # Save merged data for later use
+                
+                # Store merged data for later use
+                st.session_state['merged_df'] = merged_df
+                
                 st.success("Files uploaded and merged successfully!")
                 st.dataframe(merged_df.head())
             except Exception as e:
                 st.error(f"An error occurred while processing the files: {e}")
     else:
-        st.info("Please upload your CSV files to get started.")
+        st.info("Please upload at least one CSV file to get started.")
 
 # --- Data Summary Page ---
 elif app_mode == "Data Summary":
@@ -88,7 +86,7 @@ elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
         This dashboard integrates multiple CSV data sources into one unified view—a single source of truth—for your pharmaceutical product.
-        Built with Python and Streamlit, it allows you to upload at least 5 files, merge them based on a common key (e.g., `product_id`),
+        Built with Python and Streamlit, it allows you to upload up to 5 files, merge them based on a common key (e.g., `product_id`),
         and view comprehensive summaries and metrics.
     """)
     st.write("Developed using Python and Streamlit.")
