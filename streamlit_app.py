@@ -9,7 +9,7 @@ import os
 def load_file(uploaded_file):
     """
     Reads an uploaded file (CSV, XLSX, or XLS) into a DataFrame.
-    Expects exactly two columns: 'unique_id' and 'Data'.
+    Expects exactly one column: 'unique_id'.
     """
     _, extension = os.path.splitext(uploaded_file.name.lower())
     if extension == ".csv":
@@ -22,11 +22,11 @@ def load_file(uploaded_file):
 
 def check_expected_columns(df, file_name):
     """
-    Verifies that the DataFrame has exactly the columns: {'unique_id', 'Data'}.
+    Verifies that the DataFrame has exactly the column: {'unique_id'}.
     """
-    expected = {"unique_id", "Data"}
+    expected = {"unique_id"}
     if set(df.columns) != expected:
-        st.error(f"File {file_name} must have exactly the columns: {expected}")
+        st.error(f"File {file_name} must have exactly the column: {expected}")
         st.stop()
 
 def color_rows_by_source(row, color_map):
@@ -41,7 +41,7 @@ def color_rows_by_source(row, color_map):
 # Streamlit Layout
 # -------------------------
 
-st.set_page_config(page_title="Drug Blender (3 Columns)", layout="wide")
+st.set_page_config(page_title="Drug Blender", layout="wide")
 
 st.markdown("""
 <style>
@@ -80,8 +80,8 @@ if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have exactly two columns:** "
-        "`unique_id` and `Data`. The app will concatenate them, add a `source_file` column, and sort by `unique_id`."
+        "Upload 1–5 files (CSV, XLSX, or XLS). Each file must have exactly one column: "
+        "`unique_id`. The app will concatenate them, add a `source_file` column, and sort by `unique_id`."
     )
 
     with st.container():
@@ -106,11 +106,11 @@ if app_mode == "Data Ingestion":
                 for i, file in enumerate(uploaded_files):
                     df = load_file(file)
                     
-                    # Check that the file has exactly the expected columns.
+                    # Check that the file has exactly the expected column.
                     check_expected_columns(df, file.name)
                     
-                    # Keep only these 2 columns
-                    df = df[["unique_id", "Data"]]
+                    # Keep only the 'unique_id' column
+                    df = df[["unique_id"]]
                     
                     # Add a 'source_file' column
                     df["source_file"] = file.name
@@ -127,7 +127,7 @@ if app_mode == "Data Ingestion":
                 st.session_state["master_df"] = master_df
                 st.session_state["color_map"] = color_map
                 
-                st.success("Files uploaded and combined successfully (3 columns total).")
+                st.success("Files uploaded and combined successfully (2 columns plus source_file).")
                 st.write("**Preview of Combined & Sorted Data (first 15 rows):**")
                 st.dataframe(master_df.head(15))
                 st.write(f"**Final Shape:** {master_df.shape} (rows, columns)")
@@ -143,7 +143,7 @@ if app_mode == "Data Ingestion":
 # -------------------------
 elif app_mode == "Master Document":
     st.header("Master Document")
-    st.write("Below is the combined dataset (3 columns: `unique_id`, `Data`, `source_file`), sorted by `unique_id`.")
+    st.write("Below is the combined dataset (2 columns: `unique_id`, `source_file`), sorted by `unique_id`.")
 
     if "master_df" in st.session_state and "color_map" in st.session_state:
         master_df = st.session_state["master_df"]
@@ -183,12 +183,12 @@ elif app_mode == "Master Document":
 elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
-        This **Drug Blender** version ensures exactly 3 columns:
+        This **Drug Blender** version ensures exactly 2 columns from your files:
         1. `unique_id`
-        2. `Data`
-        3. `source_file`
         
-        **No NaNs** occur because each uploaded file must have exactly the columns: {'unique_id', 'Data'}.
+        A third column, `source_file`, is added to track the origin of each row.
+        
+        **No NaNs** occur because each uploaded file must have exactly the column: {'unique_id'}.
         Rows are simply concatenated and then sorted by `unique_id`.
         
         **Features:**
@@ -199,3 +199,4 @@ elif app_mode == "About":
         
         Built with Python and Streamlit.
     """)
+
