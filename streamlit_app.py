@@ -4,28 +4,38 @@ import os
 from functools import reduce
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-# =================================
-# PAGE NAVIGATION VIA SIDEBAR
-# =================================
+# ==================================================
+# PAGE CONFIG - MUST BE FIRST
+# ==================================================
+st.set_page_config(page_title="Drug Blender", layout="wide")
+
+# ==================================================
+# SESSION STATE PAGE NAVIGATION
+# ==================================================
 def set_page(page_name: str):
+    """Update the current page in session state and rerun."""
     st.session_state["current_page"] = page_name
     st.experimental_rerun()
 
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "Data Ingestion"
 
+# Define the pages to display in the sidebar
 PAGES = ["Data Ingestion", "Master Document", "Analysis", "About"]
+
 selected_page = st.sidebar.radio("Navigation", PAGES, index=PAGES.index(st.session_state["current_page"]))
 if selected_page != st.session_state["current_page"]:
     st.session_state["current_page"] = selected_page
     st.experimental_rerun()
 
-# =================================
+# ==================================================
 # HELPER FUNCTIONS
-# =================================
-
+# ==================================================
 def load_file(uploaded_file):
-    """Reads an uploaded file (CSV, XLSX, or XLS) into a DataFrame, dropping empty columns."""
+    """
+    Reads an uploaded file (CSV, XLSX, or XLS) into a DataFrame,
+    dropping completely empty columns.
+    """
     _, extension = os.path.splitext(uploaded_file.name.lower())
     if extension == ".csv":
         df = pd.read_csv(uploaded_file)
@@ -33,21 +43,20 @@ def load_file(uploaded_file):
         df = pd.read_excel(uploaded_file)
     else:
         raise ValueError(f"Unsupported file type: {extension}")
+    # Drop columns that are entirely empty
     df = df.loc[:, df.notna().any()]
     return df
 
 def check_expected_key(df, file_name):
-    """Verifies that the DataFrame has the key column 'ID'."""
-    expected = {"ID"}
-    if not expected.issubset(df.columns):
-        st.error(f"File {file_name} must have the column: {expected}")
+    """Ensures the DataFrame has a key column named 'ID'."""
+    if "ID" not in df.columns:
+        st.error(f"File {file_name} must have a column named 'ID'.")
         st.stop()
 
 def rename_non_key_columns(df, file_name):
     """
     Renames each column except 'ID' to include the file name as a suffix.
-    For example, if a file has columns ["ID", "A", "B"], they become:
-    ["ID", "A__{file_name}", "B__{file_name}"]
+    e.g. 'A' -> 'A__{file_name}'
     """
     new_cols = {}
     for col in df.columns:
@@ -56,20 +65,21 @@ def rename_non_key_columns(df, file_name):
     return df.rename(columns=new_cols)
 
 def get_file_columns(df):
-    """Returns the non-'ID' columns in the DataFrame."""
+    """Return the list of columns (excluding 'ID') that belong to this file."""
     return [col for col in df.columns if col != "ID"]
 
-# =================================
-# PAGE IMPLEMENTATIONS
-# =================================
+# ==================================================
+# PAGES
+# ==================================================
 
 def data_ingestion_page():
+    """Page 1: Upload and merge files."""
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
         "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** "
-        "plus one or more additional data columns. The app will rename non‑ID columns to include the file name, "
-        "merge all files horizontally (outer join) on 'ID', sort by 'ID', and display one row per ID."
+        "plus one or more additional data columns. We will rename non‑ID columns to include the file name, "
+        "then merge all files horizontally (outer join) on 'ID', sorting by 'ID'."
     )
 
     uploaded_files = st.file_uploader(
@@ -87,6 +97,7 @@ def data_ingestion_page():
                     df_list = []
                     file_columns = {}
                     color_map = {}
+                    # Up to 5 distinct colors for the columns
                     color_palette = ["#FFCFCF", "#CFFFCF", "#CFCFFF", "#FFFACF", "#FFCFFF"]
 
                     for i, file in enumerate(uploaded_files):
@@ -97,9 +108,11 @@ def data_ingestion_page():
                         df_list.append(df)
                         color_map[file.name] = color_palette[i]
                     
+                    # Merge on 'ID' using outer join
                     master_df = reduce(lambda left, right: pd.merge(left, right, on="ID", how="outer"), df_list)
                     master_df = master_df.sort_values(by="ID").reset_index(drop=True)
 
+                    # Store in session state
                     st.session_state["master_df"] = master_df
                     st.session_state["file_columns"] = file_columns
                     st.session_state["color_map"] = color_map
@@ -115,30 +128,53 @@ def data_ingestion_page():
         st.info("Upload 1–5 CSV/XLSX/XLS files to get started.")
 
 def master_document_page():
+    """Page 2: Display merged data in a color-coded, draggable columns grid."""
     st.header("Master Document")
-    st.write("Below is the merged dataset with one row per ID. All data from each file appear side‑by‑side. "
-             "You can drag and reorder columns interactively.")
+    st.write("Below is the merged dataset with one row per ID. All data from each file appear side‑by‑side, "
+             "with each file’s columns color-coded. You can drag and reorder columns interactively.")
 
     if ("master_df" in st.session_state and 
         "file_columns" in st.session_state and 
         "color_map" in st.session_state):
-        
+
         master_df = st.session_state["master_df"]
         file_columns = st.session_state["file_columns"]
         color_map = st.session_state["color_map"]
 
+        # Legend
         st.markdown("### Legend (File → Color):")
         for fname, color in color_map.items():
             st.markdown(
-                f'<div style="display:inline-block;width:20px;height:20px;background-color:{color};margin-right:10px;"></div>{fname}',
+                f'<div style="display:inline-block;width:20px;height:20px;'
+                f'background-color:{color};margin-right:10px;"></div>{fname}',
                 unsafe_allow_html=True
             )
 
-        # Build grid options with draggable columns enabled
+        # Build column definitions for AgGrid with color-coded cellStyle
+        col_defs = []
+        for col in master_df.columns:
+            col_def = {"field": col}
+            if col == "ID":
+                # Optionally pin ID to the left
+                col_def["pinned"] = "left"
+            else:
+                # Determine which file contributed this column
+                for fname, cols in file_columns.items():
+                    if col in cols:
+                        col_def["cellStyle"] = {
+                            "backgroundColor": color_map[fname],  # JS-style camelCase
+                            "color": "#000000"                    # ensure text is visible
+                        }
+                        break
+            col_defs.append(col_def)
+
+        # Build AgGrid options
         gb = GridOptionsBuilder.from_dataframe(master_df)
         gb.configure_grid_options(enableColReorder=True)
         gridOptions = gb.build()
+        gridOptions["columnDefs"] = col_defs
 
+        # Display the AgGrid
         AgGrid(
             master_df,
             gridOptions=gridOptions,
@@ -147,9 +183,10 @@ def master_document_page():
             reload_data=True,
             enable_enterprise_modules=False,
             allow_unsafe_jscode=True,
-            theme='streamlit'  # other themes: 'blue', 'fresh', 'dark'
+            theme='streamlit'  # possible themes: 'blue', 'fresh', 'dark'
         )
 
+        # Download button for merged data
         csv_data = master_df.to_csv(index=False)
         st.download_button(
             label="Download Merged Data as CSV",
@@ -161,6 +198,7 @@ def master_document_page():
         st.warning("No merged data found. Please go to Data Ingestion first.")
 
 def analysis_page():
+    """Page 3: Simple numeric stats, missing data info, etc."""
     st.header("Analysis & Insights")
     st.write("This page provides a high-level analysis of the merged data.")
 
@@ -195,20 +233,30 @@ def analysis_page():
         st.warning("No data found. Please upload files and create a master document first.")
 
 def about_page():
+    """Page 4: Basic info about the dashboard."""
     st.header("About This Dashboard")
     st.write("""
-        **Drug Blender** merges multiple CSV/Excel files horizontally by a shared 'ID' column, 
-        renames non‑ID columns to include the file name, and color-codes columns based on file origin. 
-        It offers a workflow with Data Ingestion, Master Document (with draggable columns), and Analysis pages.
+        **Drug Blender** merges multiple CSV/Excel files horizontally by a shared 'ID' column,
+        renames non‑ID columns to include the file name, and color-codes columns based on file origin.
+        It offers:
         
-        **Features:**
-        - Upload 1–5 files (CSV, XLSX, or XLS), each with key column 'ID' plus additional data.
-        - Merge into one row per 'ID' (outer join) with side‑by‑side columns.
-        - Downloadable merged CSV.
-        - Basic numeric and missing-data analysis.
-        - Interactive column reordering using AgGrid.
+        - Data Ingestion (upload/merge)
+        - Master Document (color-coded, draggable columns in AgGrid)
+        - Analysis (numeric summaries, missing data, placeholders for domain-specific insights)
+        - About (general info)
+        
+        **Installation**:
+        - `pip install streamlit-aggrid`
+        - or add `streamlit-aggrid` to your `requirements.txt`.
+        
+        **Usage**:
+        - Run `streamlit run app.py`
+        - Navigate between pages using the sidebar.
     """)
 
+# ==================================================
+# MAIN APP LOGIC
+# ==================================================
 def main():
     current_page = st.session_state["current_page"]
     if current_page == "Data Ingestion":
@@ -219,6 +267,10 @@ def main():
         analysis_page()
     else:
         about_page()
+
+if __name__ == "__main__":
+    main()
+
 
 if __name__ == "__main__":
     main()
