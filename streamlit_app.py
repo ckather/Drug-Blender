@@ -2,42 +2,48 @@ import streamlit as st
 import pandas as pd
 import os
 
-# =========================
+# -------------------------
 # Helper Functions
-# =========================
+# -------------------------
 
 def load_file(uploaded_file):
     """
-    Reads an uploaded file (CSV, XLSX, or XLS) into a Pandas DataFrame.
-    Expects columns: [unique_id, Data].
+    Reads an uploaded file (CSV, XLSX, or XLS) into a DataFrame.
+    Expects exactly two columns: 'unique_id' and 'Data'.
     """
     _, extension = os.path.splitext(uploaded_file.name.lower())
-    
     if extension == ".csv":
         df = pd.read_csv(uploaded_file)
     elif extension in [".xlsx", ".xls"]:
         df = pd.read_excel(uploaded_file)
     else:
         raise ValueError(f"Unsupported file type: {extension}")
-    
     return df
+
+def check_expected_columns(df, file_name):
+    """
+    Verifies that the DataFrame has exactly the columns: {'unique_id', 'Data'}.
+    """
+    expected = {"unique_id", "Data"}
+    if set(df.columns) != expected:
+        st.error(f"File {file_name} must have exactly the columns: {expected}")
+        st.stop()
 
 def color_rows_by_source(row, color_map):
     """
-    Returns a list of CSS styles for each cell in a row
-    based on the 'source_file' column.
+    Returns a list of CSS styles for each cell in the row,
+    based on the file indicated in 'source_file'.
     """
     file_name = row["source_file"]
     color = color_map.get(file_name, "#FFFFFF")
     return [f"background-color: {color}"] * len(row)
 
-# =========================
+# -------------------------
 # Streamlit Layout
-# =========================
+# -------------------------
 
 st.set_page_config(page_title="Drug Blender (3 Columns)", layout="wide")
 
-# --- Custom CSS for beautification ---
 st.markdown("""
 <style>
     .main { background-color: #f5f5f5; }
@@ -62,24 +68,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Sidebar Navigation ---
+# -------------------------
+# Sidebar Navigation
+# -------------------------
+
 app_mode = st.sidebar.radio("Go to", ["Data Ingestion", "Master Document", "About"])
 
-# ---------------------------
+# -------------------------
 # 1) DATA INGESTION PAGE
-# ---------------------------
+# -------------------------
 if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "**Requirements:** Each file (CSV, XLSX, or XLS) must have exactly 2 columns named `unique_id` and `Data`. "
-        "We'll concatenate them, add a `source_file` column, and sort by `unique_id`, ending up with 3 columns total."
+        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have exactly two columns:** "
+        "`unique_id` and `Data` (using the unique ID you created). The app will concatenate them, add a "
+        "`source_file` column, and sort by `unique_id`."
     )
 
     with st.container():
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
         uploaded_files = st.file_uploader(
-            "Upload 1–5 Files (CSV, XLSX, or XLS). Each must have [unique_id, Data].",
+            "Upload 1–5 Files (CSV, XLSX, or XLS)",
             type=["csv", "xlsx", "xls"],
             accept_multiple_files=True
         )
@@ -91,45 +101,36 @@ if app_mode == "Data Ingestion":
         else:
             try:
                 df_list = []
-                
-                # Up to 5 distinct colors for highlighting rows
+                # Color palette for up to 5 files
                 color_palette = ["#FFCFCF", "#CFFFCF", "#CFCFFF", "#FFFACF", "#FFCFFF"]
                 color_map = {}
                 
                 for i, file in enumerate(uploaded_files):
                     df = load_file(file)
+                    # Verify the file has exactly the expected columns
+                    check_expected_columns(df, file.name)
                     
-                    # Check columns
-                    expected_cols = {"unique_id", "Data"}
-                    actual_cols = set(df.columns)
-                    if not expected_cols.issubset(actual_cols):
-                        st.error(f"File {file.name} must have columns: {expected_cols}")
-                        st.stop()
-                    
-                    # Keep only these 2 columns (in case there are extras)
+                    # Keep only the two columns (order doesn't matter since set equality was checked)
                     df = df[["unique_id", "Data"]]
                     
-                    # Add a 'source_file' column
+                    # Add source_file column
                     df["source_file"] = file.name
                     color_map[file.name] = color_palette[i]
                     
                     df_list.append(df)
                 
-                # Concatenate (append) all data
+                # Concatenate all DataFrames
                 master_df = pd.concat(df_list, ignore_index=True)
-                
-                # Sort by unique_id so that 1,1,1 appear together, then 2,2,2, etc.
+                # Sort by unique_id so that all rows for each unique_id appear consecutively
                 master_df = master_df.sort_values(by="unique_id", ignore_index=True)
                 
-                # Store in session_state
+                # Store master_df and color_map in session state
                 st.session_state["master_df"] = master_df
                 st.session_state["color_map"] = color_map
                 
                 st.success("Files uploaded and combined successfully (3 columns total).")
                 st.write("**Preview of Combined & Sorted Data (first 15 rows):**")
                 st.dataframe(master_df.head(15))
-                
-                # Show shape and columns
                 st.write(f"**Final Shape:** {master_df.shape} (rows, columns)")
                 st.write("**Columns:**", list(master_df.columns))
                 
@@ -138,9 +139,9 @@ if app_mode == "Data Ingestion":
     else:
         st.info("Upload 1–5 CSV/XLSX/XLS files to get started.")
 
-# ---------------------------
+# -------------------------
 # 2) MASTER DOCUMENT PAGE
-# ---------------------------
+# -------------------------
 elif app_mode == "Master Document":
     st.header("Master Document")
     st.write("Below is the combined dataset (3 columns: `unique_id`, `Data`, `source_file`), sorted by `unique_id`.")
@@ -149,7 +150,7 @@ elif app_mode == "Master Document":
         master_df = st.session_state["master_df"]
         color_map = st.session_state["color_map"]
         
-        # --- Legend ---
+        # Display Legend
         st.markdown('<div class="legend-box">', unsafe_allow_html=True)
         st.write("**Legend (File → Color):**")
         for file_name, color in color_map.items():
@@ -162,16 +163,14 @@ elif app_mode == "Master Document":
             )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # --- Color-code rows by source_file ---
+        # Color-code rows based on source_file
         def apply_color(row):
             return [f"background-color: {color_map[row['source_file']]}" for _ in row]
         
         styled_df = master_df.style.apply(apply_color, axis=1)
         
-        # --- Display styled HTML ---
         st.markdown(styled_df.to_html(), unsafe_allow_html=True)
         
-        # Optional numeric summary (if unique_id is numeric, etc.)
         numeric_cols = master_df.select_dtypes(include=["int", "float"]).columns
         if len(numeric_cols) > 0:
             st.subheader("Numeric Column Summaries")
@@ -179,9 +178,9 @@ elif app_mode == "Master Document":
     else:
         st.warning("No data available. Please upload files in the Data Ingestion section.")
 
-# ---------------------------
+# -------------------------
 # 3) ABOUT PAGE
-# ---------------------------
+# -------------------------
 elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
@@ -189,15 +188,15 @@ elif app_mode == "About":
         1. `unique_id`
         2. `Data`
         3. `source_file`
-
-        **No NaNs** occur because each file is required to have exactly those 2 columns (`unique_id`, `Data`).
-        Rows are simply concatenated, then sorted by `unique_id`.
-
-        **Features**:
+        
+        **No NaNs** occur because each uploaded file must have exactly the columns: {'unique_id', 'Data'}.
+        Rows are simply concatenated and then sorted by `unique_id`.
+        
+        **Features:**
         - Accepts CSV, XLSX, or XLS files.
         - Color-coded rows (one color per file).
         - A legend mapping file names to colors.
         - Quick summary of numeric columns if present.
-
+        
         Built with Python and Streamlit.
     """)
