@@ -10,6 +10,7 @@ from functools import reduce
 def load_file(uploaded_file):
     """
     Reads an uploaded file (CSV, XLSX, or XLS) into a DataFrame.
+    Drops any completely empty columns.
     """
     _, extension = os.path.splitext(uploaded_file.name.lower())
     if extension == ".csv":
@@ -18,7 +19,7 @@ def load_file(uploaded_file):
         df = pd.read_excel(uploaded_file)
     else:
         raise ValueError(f"Unsupported file type: {extension}")
-    # Drop any completely empty columns
+    # Drop empty columns
     df = df.loc[:, df.notna().any()]
     return df
 
@@ -44,16 +45,15 @@ def rename_non_key_columns(df, file_name):
     df = df.rename(columns=new_cols)
     return df
 
-def get_file_columns(df, file_name):
+def get_file_columns(df):
     """
-    Returns the list of new (data) columns (excluding "ID") for this file.
+    Returns a list of data columns (i.e. non-"ID" columns) in the DataFrame.
     """
     return [col for col in df.columns if col != "ID"]
 
 def cell_color(col, file_columns, color_map):
     """
-    Given a column name, if it belongs to one of the file's data columns, return its background color.
-    Otherwise, return empty string.
+    Given a column name, returns its background color if it belongs to a file's data columns.
     """
     for fname, cols in file_columns.items():
         if col in cols:
@@ -62,13 +62,18 @@ def cell_color(col, file_columns, color_map):
 
 def style_merged_df(df, file_columns, color_map):
     """
-    Styles the DataFrame so that each cell in a column that came from a specific file
-    gets the file's background color.
+    Styles the merged DataFrame so that each cell in a data column gets a background color
+    based on which file it came from.
     """
+    # We apply a function to each column (except 'ID')
     def style_func(val, col_name):
         return cell_color(col_name, file_columns, color_map)
     
-    styled = df.style.applymap(lambda v, col=col: style_func(v, col), subset=df.columns.difference(["ID"]))
+    # Create a dictionary mapping column names to a style string
+    styles = {col: style_func(None, col) for col in df.columns if col != "ID"}
+    
+    # Use .applymap on all data columns
+    styled = df.style.applymap(lambda v, col: styles.get(col, ""), subset=df.columns.difference(["ID"]))
     return styled
 
 # -------------------------
@@ -114,8 +119,9 @@ if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** plus one or more additional data columns. "
-        "The app will rename non‑ID columns to include the file name, merge all files horizontally (by ID), sort by ID, and display a single row per ID with all data side‑by‑side."
+        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** "
+        "plus one or more additional data columns. The app will rename the non‑ID columns to include the file name, "
+        "merge all files horizontally on 'ID' (outer join), sort by 'ID', and display one row per ID with all data side‑by‑side."
     )
 
     with st.container():
@@ -133,7 +139,7 @@ if app_mode == "Data Ingestion":
         else:
             try:
                 df_list = []
-                file_columns = {}  # file name -> list of new (data) columns
+                file_columns = {}  # Mapping: file name -> list of renamed data columns
                 # Define a color palette for up to 5 files
                 color_palette = ["#FFCFCF", "#CFFFCF", "#CFCFFF", "#FFFACF", "#FFCFFF"]
                 color_map = {}
@@ -142,18 +148,16 @@ if app_mode == "Data Ingestion":
                     df = load_file(file)
                     # Check that the file has the key column "ID"
                     check_expected_key(df, file.name)
-                    # Rename non-ID columns to include file name
+                    # Rename non-ID columns to include the file name
                     df = rename_non_key_columns(df, file.name)
-                    # Record which new columns came from this file
-                    file_columns[file.name] = get_file_columns(df, file.name)
-                    # Add a column to track source (optional in merged view, but we can drop later)
-                    df["source_file"] = file.name
-                    color_map[file.name] = color_palette[i]
+                    # Record the data columns for this file (all columns except "ID")
+                    file_columns[file.name] = get_file_columns(df)
+                    # Do not add any extra column to avoid duplicates.
                     
                     df_list.append(df)
+                    color_map[file.name] = color_palette[i]
                 
                 # Merge all DataFrames on "ID" using outer join.
-                # Start with the first DataFrame and merge sequentially.
                 master_df = reduce(lambda left, right: pd.merge(left, right, on="ID", how="outer"), df_list)
                 master_df = master_df.sort_values(by="ID").reset_index(drop=True)
                 
@@ -214,14 +218,13 @@ elif app_mode == "Master Document":
 elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
-        This **Drug Blender** version expects each uploaded file to have a key column named 'ID'
-        plus one or more additional data columns. The non‑ID columns are renamed to include the file name,
-        then all files are merged (joined) horizontally on 'ID' so that each ID appears once with all data
-        from each file side‑by‑side.
+        This **Drug Blender** version expects each uploaded file to have a key column named 'ID' 
+        plus one or more additional data columns. The non‑ID columns are renamed to include the file name, 
+        and then all files are merged (outer join) horizontally on 'ID' so that each ID appears once with all data side‑by‑side.
         
         **Features:**
         - Accepts CSV, XLSX, or XLS files.
-        - Merges files by 'ID' (outer join) so each ID appears in one row.
+        - Merges files by 'ID' so each ID appears in one row.
         - Renames non‑ID columns to include the file name.
         - Color-codes cells based on the source file, with a legend.
         - Provides a quick numeric summary if applicable.
