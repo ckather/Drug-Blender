@@ -6,12 +6,21 @@ import os
 # Helper Functions
 # =========================
 
-def load_csv(uploaded_file):
+def load_file(uploaded_file):
     """
-    Reads an uploaded CSV file into a Pandas DataFrame.
+    Reads an uploaded file (CSV or Excel) into a Pandas DataFrame.
     Expects columns: [unique_id, Data].
     """
-    df = pd.read_csv(uploaded_file)
+    # Determine the file extension
+    _, extension = os.path.splitext(uploaded_file.name.lower())
+    
+    if extension == ".csv":
+        df = pd.read_csv(uploaded_file)
+    elif extension in [".xlsx", ".xls"]:
+        df = pd.read_excel(uploaded_file)
+    else:
+        raise ValueError(f"Unsupported file type: {extension}")
+    
     return df
 
 def color_rows_by_source(row, color_map):
@@ -64,15 +73,15 @@ if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "**Requirements:** Each CSV must have exactly 2 columns named `unique_id` and `Data`. "
-        "We'll concatenate them, add a `source_file` column, and sort by `unique_id`."
+        "**Requirements:** Each file (CSV, XLSX, or XLS) must have exactly 2 columns named `unique_id` and `Data`. "
+        "We'll concatenate them, add a `source_file` column, and sort by `unique_id`, ending up with 3 columns total."
     )
 
     with st.container():
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
         uploaded_files = st.file_uploader(
-            "Upload 1–5 CSV Files (2 columns: [unique_id, Data])",
-            type=["csv"],
+            "Upload 1–5 Files (CSV, XLSX, or XLS). Each must have [unique_id, Data].",
+            type=["csv", "xlsx", "xls"],
             accept_multiple_files=True
         )
         st.markdown('</div>', unsafe_allow_html=True)
@@ -89,7 +98,7 @@ if app_mode == "Data Ingestion":
                 color_map = {}
                 
                 for i, file in enumerate(uploaded_files):
-                    df = load_csv(file)
+                    df = load_file(file)
                     
                     # Check columns
                     expected_cols = {"unique_id", "Data"}
@@ -98,7 +107,7 @@ if app_mode == "Data Ingestion":
                         st.error(f"File {file.name} must have columns: {expected_cols}")
                         st.stop()
                     
-                    # Keep only these 2 columns (in case there are extra columns)
+                    # Keep only these 2 columns (in case there are extras)
                     df = df[["unique_id", "Data"]]
                     
                     # Add a 'source_file' column
@@ -110,7 +119,7 @@ if app_mode == "Data Ingestion":
                 # Concatenate (append) all data
                 master_df = pd.concat(df_list, ignore_index=True)
                 
-                # Sort by unique_id so that 1,1,1,1 appear together, then 2,2,2,2, etc.
+                # Sort by unique_id so that 1,1,1 appear together, then 2,2,2, etc.
                 master_df = master_df.sort_values(by="unique_id", ignore_index=True)
                 
                 # Store in session_state
@@ -128,7 +137,7 @@ if app_mode == "Data Ingestion":
             except Exception as e:
                 st.error(f"An error occurred while processing the files: {e}")
     else:
-        st.info("Upload 1–5 CSV files to get started.")
+        st.info("Upload 1–5 CSV/XLSX/XLS files to get started.")
 
 # ---------------------------
 # 2) MASTER DOCUMENT PAGE
@@ -147,7 +156,7 @@ elif app_mode == "Master Document":
         for file_name, color in color_map.items():
             st.markdown(
                 f'<div class="legend-item">'
-                f'<span style="display:inline-block;width:20px;height:20px;background-color:{color};margin-right:10px;"></span>'
+                f'<span style="display:inline-block;width:20px;height:20px;background-color:{color};margin-right:10px;'></span>'
                 f'{file_name}'
                 f'</div>',
                 unsafe_allow_html=True
@@ -178,17 +187,18 @@ elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
         This **Drug Blender** version ensures exactly 3 columns:
-        - `unique_id`
-        - `Data`
-        - `source_file`
-        
-        **No NaNs** occur because each CSV is expected to have exactly `unique_id` and `Data`.
+        1. `unique_id`
+        2. `Data`
+        3. `source_file`
+
+        **No NaNs** occur because each file is required to have exactly those 2 columns (`unique_id`, `Data`).
         Rows are simply concatenated, then sorted by `unique_id`.
-        
+
         **Features**:
+        - Accepts CSV, XLSX, or XLS files.
         - Color-coded rows (one color per file).
         - A legend mapping file names to colors.
         - Quick summary of numeric columns if present.
-        
+
         Built with Python and Streamlit.
     """)
