@@ -17,13 +17,15 @@ def set_page(page_name: str):
     st.session_state["current_page"] = page_name
     st.experimental_rerun()
 
+# Initialize the page in session state if not present
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "Data Ingestion"
 
 # Define the pages to display in the sidebar
 PAGES = ["Data Ingestion", "Master Document", "Analysis", "About"]
 
-selected_page = st.sidebar.radio("Navigation", PAGES, index=PAGES.index(st.session_state["current_page"]))
+# Create a sidebar radio for navigation
+selected_page = st.sidebar.radio("Navigation", PAGES, index=PAGES.index(st.session_state["current_page"]), key="sidebar_nav")
 if selected_page != st.session_state["current_page"]:
     st.session_state["current_page"] = selected_page
     st.experimental_rerun()
@@ -69,11 +71,9 @@ def get_file_columns(df):
     return [col for col in df.columns if col != "ID"]
 
 # ==================================================
-# PAGES
+# PAGE 1: DATA INGESTION
 # ==================================================
-
 def data_ingestion_page():
-    """Page 1: Upload and merge files."""
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
@@ -82,17 +82,20 @@ def data_ingestion_page():
         "then merge all files horizontally (outer join) on 'ID', sorting by 'ID'."
     )
 
+    # Unique key for file_uploader
     uploaded_files = st.file_uploader(
         "Upload 1–5 Files (CSV, XLSX, or XLS)",
         type=["csv", "xlsx", "xls"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="file_uploader_ingestion"
     )
 
     if uploaded_files:
         if len(uploaded_files) > 5:
             st.warning("Please upload a maximum of 5 files.")
         else:
-            if st.button("Process Files"):
+            # Unique key for the "Process Files" button
+            if st.button("Process Files", key="process_files_ingestion"):
                 try:
                     df_list = []
                     file_columns = {}
@@ -109,6 +112,7 @@ def data_ingestion_page():
                         color_map[file.name] = color_palette[i]
                     
                     # Merge on 'ID' using outer join
+                    from functools import reduce
                     master_df = reduce(lambda left, right: pd.merge(left, right, on="ID", how="outer"), df_list)
                     master_df = master_df.sort_values(by="ID").reset_index(drop=True)
 
@@ -127,8 +131,10 @@ def data_ingestion_page():
     else:
         st.info("Upload 1–5 CSV/XLSX/XLS files to get started.")
 
+# ==================================================
+# PAGE 2: MASTER DOCUMENT
+# ==================================================
 def master_document_page():
-    """Page 2: Display merged data in a color-coded, draggable columns grid."""
     st.header("Master Document")
     st.write("Below is the merged dataset with one row per ID. All data from each file appear side‑by‑side, "
              "with each file’s columns color-coded. You can drag and reorder columns interactively.")
@@ -151,6 +157,8 @@ def master_document_page():
             )
 
         # Build column definitions for AgGrid with color-coded cellStyle
+        from st_aggrid import AgGrid, GridOptionsBuilder
+
         col_defs = []
         for col in master_df.columns:
             col_def = {"field": col}
@@ -183,7 +191,7 @@ def master_document_page():
             reload_data=True,
             enable_enterprise_modules=False,
             allow_unsafe_jscode=True,
-            theme='streamlit'  # possible themes: 'blue', 'fresh', 'dark'
+            theme='streamlit'
         )
 
         # Download button for merged data
@@ -192,13 +200,16 @@ def master_document_page():
             label="Download Merged Data as CSV",
             data=csv_data,
             file_name="merged_data.csv",
-            mime="text/csv"
+            mime="text/csv",
+            key="download_merged_data_btn"
         )
     else:
         st.warning("No merged data found. Please go to Data Ingestion first.")
 
+# ==================================================
+# PAGE 3: ANALYSIS
+# ==================================================
 def analysis_page():
-    """Page 3: Simple numeric stats, missing data info, etc."""
     st.header("Analysis & Insights")
     st.write("This page provides a high-level analysis of the merged data.")
 
@@ -232,8 +243,10 @@ def analysis_page():
     else:
         st.warning("No data found. Please upload files and create a master document first.")
 
+# ==================================================
+# PAGE 4: ABOUT
+# ==================================================
 def about_page():
-    """Page 4: Basic info about the dashboard."""
     st.header("About This Dashboard")
     st.write("""
         **Drug Blender** merges multiple CSV/Excel files horizontally by a shared 'ID' column,
@@ -267,10 +280,6 @@ def main():
         analysis_page()
     else:
         about_page()
-
-if __name__ == "__main__":
-    main()
-
 
 if __name__ == "__main__":
     main()
