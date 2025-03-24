@@ -42,8 +42,7 @@ def rename_non_key_columns(df, file_name):
     for col in df.columns:
         if col != "ID":
             new_cols[col] = f"{col}__{file_name}"
-    df = df.rename(columns=new_cols)
-    return df
+    return df.rename(columns=new_cols)
 
 def get_file_columns(df):
     """
@@ -51,32 +50,17 @@ def get_file_columns(df):
     """
     return [col for col in df.columns if col != "ID"]
 
-def cell_color(col, file_columns, color_map):
-    """
-    Given a column name, returns its background color if it belongs to a file's data columns.
-    """
-    for fname, cols in file_columns.items():
-        if col in cols:
-            return f"background-color: {color_map[fname]};"
-    return ""
-
 def style_merged_df(df, file_columns, color_map):
     """
-    Styles the merged DataFrame so that each cell in a data column gets a background color
-    based on which file it came from.
+    Styles the merged DataFrame so that each column is colored based on which file it came from.
     """
-    # Build a dictionary mapping each non-ID column to its style string
-    styles = {}
-    for col in df.columns:
-        if col != "ID":
-            styles[col] = cell_color(col, file_columns, color_map)
-    
-    # Now apply style for each non-ID column individually
-    styled = df.style
-    for col in df.columns:
-        if col != "ID":
-            # For each cell in column col, assign the style string from styles[col]
-            styled = styled.applymap(lambda v: styles[col], subset=[col])
+    styled = df.style  # Start with a Styler object
+
+    # For each file, set background color for the columns that originated from that file
+    for file_name, columns in file_columns.items():
+        color = color_map[file_name]
+        styled = styled.set_properties(subset=columns, **{'background-color': color})
+
     return styled
 
 # -------------------------
@@ -228,8 +212,9 @@ elif app_mode == "About":
         - Accepts CSV, XLSX, or XLS files.
         - Merges files by 'ID' so each ID appears in one row.
         - Renames non‑ID columns to include the file name.
-        - Color-codes cells based on the source file, with a legend.
+        - Color-codes columns based on the source file, with a legend.
         - Provides a quick numeric summary if applicable.
         
         Built with Python and Streamlit.
     """)
+
