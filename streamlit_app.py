@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+from functools import reduce
 
 # -------------------------
 # Helper Functions
@@ -9,7 +10,6 @@ import os
 def load_file(uploaded_file):
     """
     Reads an uploaded file (CSV, XLSX, or XLS) into a DataFrame.
-    Drops any completely empty columns.
     """
     _, extension = os.path.splitext(uploaded_file.name.lower())
     if extension == ".csv":
@@ -18,32 +18,64 @@ def load_file(uploaded_file):
         df = pd.read_excel(uploaded_file)
     else:
         raise ValueError(f"Unsupported file type: {extension}")
-    # Drop columns that are completely empty (all values NaN)
+    # Drop any completely empty columns
     df = df.loc[:, df.notna().any()]
     return df
 
-def check_expected_columns(df, file_name):
+def check_expected_key(df, file_name):
     """
-    Verifies that the DataFrame has exactly the column: {'unique_id'}.
+    Verifies that the DataFrame has the key column "ID".
     """
-    expected = {"unique_id"}
-    if set(df.columns) != expected:
-        st.error(f"File {file_name} must have exactly the column: {expected}")
+    expected = {"ID"}
+    if expected.issubset(set(df.columns)) is False:
+        st.error(f"File {file_name} must have the column: {expected}")
         st.stop()
 
-def color_rows_by_source(row, color_map):
+def rename_non_key_columns(df, file_name):
     """
-    Returns a list of CSS styles for each cell in the row based on the file indicated in 'source_file'.
+    Renames each column except 'ID' to include the file name as a suffix.
+    For example, if a file has columns ["ID", "A", "B"], they become:
+    ["ID", "A__{file_name}", "B__{file_name}"]
     """
-    file_name = row["source_file"]
-    color = color_map.get(file_name, "#FFFFFF")
-    return [f"background-color: {color}"] * len(row)
+    new_cols = {}
+    for col in df.columns:
+        if col != "ID":
+            new_cols[col] = f"{col}__{file_name}"
+    df = df.rename(columns=new_cols)
+    return df
+
+def get_file_columns(df, file_name):
+    """
+    Returns the list of new (data) columns (excluding "ID") for this file.
+    """
+    return [col for col in df.columns if col != "ID"]
+
+def cell_color(col, file_columns, color_map):
+    """
+    Given a column name, if it belongs to one of the file's data columns, return its background color.
+    Otherwise, return empty string.
+    """
+    for fname, cols in file_columns.items():
+        if col in cols:
+            return f"background-color: {color_map[fname]};"
+    return ""
+
+def style_merged_df(df, file_columns, color_map):
+    """
+    Styles the DataFrame so that each cell in a column that came from a specific file
+    gets the file's background color.
+    """
+    def style_func(val, col_name):
+        return cell_color(col_name, file_columns, color_map)
+    
+    styled = df.style.applymap(lambda v, col=col: style_func(v, col), subset=df.columns.difference(["ID"]))
+    return styled
 
 # -------------------------
 # Streamlit Layout
 # -------------------------
 
-st.set_page_config(page_title="Drug Blender", layout="wide")
+st.set_page_config(page_title="Drug Blender (Merged by ID)", layout="wide")
 
 st.markdown("""
 <style>
@@ -82,8 +114,8 @@ if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have exactly one column:** `unique_id`. "
-        "The app will concatenate them, add a `source_file` column, and sort by `unique_id`."
+        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** plus one or more additional data columns. "
+        "The app will rename non‑ID columns to include the file name, merge all files horizontally (by ID), sort by ID, and display a single row per ID with all data side‑by‑side."
     )
 
     with st.container():
@@ -101,36 +133,36 @@ if app_mode == "Data Ingestion":
         else:
             try:
                 df_list = []
+                file_columns = {}  # file name -> list of new (data) columns
                 # Define a color palette for up to 5 files
                 color_palette = ["#FFCFCF", "#CFFFCF", "#CFCFFF", "#FFFACF", "#FFCFFF"]
                 color_map = {}
                 
                 for i, file in enumerate(uploaded_files):
                     df = load_file(file)
-                    
-                    # Verify that the file has exactly the expected column.
-                    check_expected_columns(df, file.name)
-                    
-                    # Keep only the 'unique_id' column (there should be no others now)
-                    df = df[["unique_id"]]
-                    
-                    # Add a 'source_file' column
+                    # Check that the file has the key column "ID"
+                    check_expected_key(df, file.name)
+                    # Rename non-ID columns to include file name
+                    df = rename_non_key_columns(df, file.name)
+                    # Record which new columns came from this file
+                    file_columns[file.name] = get_file_columns(df, file.name)
+                    # Add a column to track source (optional in merged view, but we can drop later)
                     df["source_file"] = file.name
                     color_map[file.name] = color_palette[i]
                     
                     df_list.append(df)
                 
-                # Concatenate (append) all data
-                master_df = pd.concat(df_list, ignore_index=True)
-                # Sort by unique_id so that all rows for each unique_id appear consecutively
-                master_df = master_df.sort_values(by="unique_id", ignore_index=True)
+                # Merge all DataFrames on "ID" using outer join.
+                # Start with the first DataFrame and merge sequentially.
+                master_df = reduce(lambda left, right: pd.merge(left, right, on="ID", how="outer"), df_list)
+                master_df = master_df.sort_values(by="ID").reset_index(drop=True)
                 
-                # Store in session_state
                 st.session_state["master_df"] = master_df
+                st.session_state["file_columns"] = file_columns
                 st.session_state["color_map"] = color_map
                 
-                st.success("Files uploaded and combined successfully (2 columns + source_file).")
-                st.write("**Preview of Combined & Sorted Data (first 15 rows):**")
+                st.success("Files uploaded and merged successfully.")
+                st.write("**Preview of Merged Data (first 15 rows):**")
                 st.dataframe(master_df.head(15))
                 st.write(f"**Final Shape:** {master_df.shape} (rows, columns)")
                 st.write("**Columns:**", list(master_df.columns))
@@ -145,10 +177,11 @@ if app_mode == "Data Ingestion":
 # -------------------------
 elif app_mode == "Master Document":
     st.header("Master Document")
-    st.write("Below is the combined dataset (2 columns: `unique_id`, `source_file`), sorted by `unique_id`.")
+    st.write("Below is the merged dataset with one row per ID. All data from each file appear side‑by‑side.")
 
-    if "master_df" in st.session_state and "color_map" in st.session_state:
+    if "master_df" in st.session_state and "file_columns" in st.session_state and "color_map" in st.session_state:
         master_df = st.session_state["master_df"]
+        file_columns = st.session_state["file_columns"]
         color_map = st.session_state["color_map"]
         
         # --- Legend ---
@@ -164,12 +197,8 @@ elif app_mode == "Master Document":
             )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # --- Color-code rows by source_file ---
-        def apply_color(row):
-            return [f"background-color: {color_map[row['source_file']]}" for _ in row]
-        
-        styled_df = master_df.style.apply(apply_color, axis=1)
-        
+        # --- Style the merged DataFrame ---
+        styled_df = style_merged_df(master_df, file_columns, color_map)
         st.markdown(styled_df.to_html(), unsafe_allow_html=True)
         
         numeric_cols = master_df.select_dtypes(include=["int", "float"]).columns
@@ -185,20 +214,17 @@ elif app_mode == "Master Document":
 elif app_mode == "About":
     st.header("About This Dashboard")
     st.write("""
-        This **Drug Blender** version expects exactly one column from your files:
-        - `unique_id`
-        
-        A second column, `source_file`, is added to track the origin of each row.
-        
-        **No NaNs** occur because each uploaded file must have exactly the column: {'unique_id'}.
-        Rows are simply concatenated and then sorted by `unique_id`.
+        This **Drug Blender** version expects each uploaded file to have a key column named 'ID'
+        plus one or more additional data columns. The non‑ID columns are renamed to include the file name,
+        then all files are merged (joined) horizontally on 'ID' so that each ID appears once with all data
+        from each file side‑by‑side.
         
         **Features:**
         - Accepts CSV, XLSX, or XLS files.
-        - Color-coded rows (one color per file).
-        - A legend mapping file names to colors.
-        - Quick summary of numeric columns if present.
+        - Merges files by 'ID' (outer join) so each ID appears in one row.
+        - Renames non‑ID columns to include the file name.
+        - Color-codes cells based on the source file, with a legend.
+        - Provides a quick numeric summary if applicable.
         
         Built with Python and Streamlit.
     """)
-
