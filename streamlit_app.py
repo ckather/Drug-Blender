@@ -2,21 +2,19 @@ import streamlit as st
 import pandas as pd
 import os
 from functools import reduce
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 # =================================
 # PAGE NAVIGATION VIA SIDEBAR
 # =================================
 def set_page(page_name: str):
     st.session_state["current_page"] = page_name
-    st.experimental_rerun()  # Force a rerun to update the page
+    st.experimental_rerun()
 
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "Data Ingestion"
 
-# List of pages in the sidebar
 PAGES = ["Data Ingestion", "Master Document", "Analysis", "About"]
-
-# Create the sidebar radio for navigation
 selected_page = st.sidebar.radio("Navigation", PAGES, index=PAGES.index(st.session_state["current_page"]))
 if selected_page != st.session_state["current_page"]:
     st.session_state["current_page"] = selected_page
@@ -48,7 +46,7 @@ def check_expected_key(df, file_name):
 def rename_non_key_columns(df, file_name):
     """
     Renames each column except 'ID' to include the file name as a suffix.
-    For example, if columns are ["ID", "A", "B"], they become:
+    For example, if a file has columns ["ID", "A", "B"], they become:
     ["ID", "A__{file_name}", "B__{file_name}"]
     """
     new_cols = {}
@@ -61,16 +59,6 @@ def get_file_columns(df):
     """Returns the non-'ID' columns in the DataFrame."""
     return [col for col in df.columns if col != "ID"]
 
-def style_merged_df(df, file_columns, color_map):
-    """
-    Applies background colors to columns based on the file they came from.
-    """
-    styled = df.style
-    for file_name, cols in file_columns.items():
-        color = color_map[file_name]
-        styled = styled.set_properties(subset=cols, **{'background-color': color})
-    return styled
-
 # =================================
 # PAGE IMPLEMENTATIONS
 # =================================
@@ -80,7 +68,7 @@ def data_ingestion_page():
     st.subheader("Data Ingestion")
     st.write(
         "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** "
-        "plus one or more additional data columns. We'll rename non‑ID columns to include the file name, "
+        "plus one or more additional data columns. The app will rename non‑ID columns to include the file name, "
         "merge all files horizontally (outer join) on 'ID', sort by 'ID', and display one row per ID."
     )
 
@@ -121,10 +109,6 @@ def data_ingestion_page():
                     st.dataframe(master_df.head(15))
                     st.write(f"**Final Shape:** {master_df.shape} (rows, columns)")
                     st.write("**Columns:**", list(master_df.columns))
-
-                    if st.button("Continue → Master Document"):
-                        set_page("Master Document")
-
                 except Exception as e:
                     st.error(f"Error processing files: {e}")
     else:
@@ -132,7 +116,8 @@ def data_ingestion_page():
 
 def master_document_page():
     st.header("Master Document")
-    st.write("Below is the merged dataset with one row per ID. All data from each file appear side‑by‑side.")
+    st.write("Below is the merged dataset with one row per ID. All data from each file appear side‑by‑side. "
+             "You can drag and reorder columns interactively.")
 
     if ("master_df" in st.session_state and 
         "file_columns" in st.session_state and 
@@ -149,8 +134,21 @@ def master_document_page():
                 unsafe_allow_html=True
             )
 
-        styled_df = style_merged_df(master_df, file_columns, color_map)
-        st.write(styled_df.render(), unsafe_allow_html=True)
+        # Build grid options with draggable columns enabled
+        gb = GridOptionsBuilder.from_dataframe(master_df)
+        gb.configure_grid_options(enableColReorder=True)
+        gridOptions = gb.build()
+
+        AgGrid(
+            master_df,
+            gridOptions=gridOptions,
+            height=500,
+            width='100%',
+            reload_data=True,
+            enable_enterprise_modules=False,
+            allow_unsafe_jscode=True,
+            theme='streamlit'  # other themes: 'blue', 'fresh', 'dark'
+        )
 
         csv_data = master_df.to_csv(index=False)
         st.download_button(
@@ -159,9 +157,6 @@ def master_document_page():
             file_name="merged_data.csv",
             mime="text/csv"
         )
-
-        if st.button("Continue → Analysis"):
-            set_page("Analysis")
     else:
         st.warning("No merged data found. Please go to Data Ingestion first.")
 
@@ -204,14 +199,14 @@ def about_page():
     st.write("""
         **Drug Blender** merges multiple CSV/Excel files horizontally by a shared 'ID' column, 
         renames non‑ID columns to include the file name, and color-codes columns based on file origin. 
-        It offers a workflow with Data Ingestion, Master Document, and Analysis pages.
+        It offers a workflow with Data Ingestion, Master Document (with draggable columns), and Analysis pages.
         
         **Features:**
         - Upload 1–5 files (CSV, XLSX, or XLS), each with key column 'ID' plus additional data.
-        - Merged into one row per 'ID' (outer join) with side‑by‑side columns.
+        - Merge into one row per 'ID' (outer join) with side‑by‑side columns.
         - Downloadable merged CSV.
         - Basic numeric and missing-data analysis.
-        - Navigation via sidebar and “Continue” buttons.
+        - Interactive column reordering using AgGrid.
     """)
 
 def main():
@@ -227,4 +222,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
