@@ -65,14 +65,12 @@ def style_merged_df(df, file_columns, color_map):
     Styles the merged DataFrame so that each cell in a data column gets a background color
     based on which file it came from.
     """
-    # We apply a function to each column (except 'ID')
-    def style_func(val, col_name):
-        return cell_color(col_name, file_columns, color_map)
-    
-    # Create a dictionary mapping column names to a style string
-    styles = {col: style_func(None, col) for col in df.columns if col != "ID"}
-    
-    # Use .applymap on all data columns
+    # Create a dictionary mapping each column (except "ID") to its style string
+    styles = {}
+    for col in df.columns:
+        if col != "ID":
+            styles[col] = cell_color(col, file_columns, color_map)
+    # Apply style to each cell in the non-key columns
     styled = df.style.applymap(lambda v, col: styles.get(col, ""), subset=df.columns.difference(["ID"]))
     return styled
 
@@ -119,9 +117,9 @@ if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** "
-        "plus one or more additional data columns. The app will rename the non‑ID columns to include the file name, "
-        "merge all files horizontally on 'ID' (outer join), sort by 'ID', and display one row per ID with all data side‑by‑side."
+        "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** plus one or more additional data columns. "
+        "The app will rename the non‑ID columns to include the file name, merge all files horizontally (outer join) on 'ID', sort by 'ID', "
+        "and display one row per ID with all data side‑by‑side."
     )
 
     with st.container():
@@ -152,7 +150,6 @@ if app_mode == "Data Ingestion":
                     df = rename_non_key_columns(df, file.name)
                     # Record the data columns for this file (all columns except "ID")
                     file_columns[file.name] = get_file_columns(df)
-                    # Do not add any extra column to avoid duplicates.
                     
                     df_list.append(df)
                     color_map[file.name] = color_palette[i]
@@ -203,7 +200,8 @@ elif app_mode == "Master Document":
         
         # --- Style the merged DataFrame ---
         styled_df = style_merged_df(master_df, file_columns, color_map)
-        st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+        # Use render() instead of to_html() to avoid errors
+        st.write(styled_df.render(), unsafe_allow_html=True)
         
         numeric_cols = master_df.select_dtypes(include=["int", "float"]).columns
         if len(numeric_cols) > 0:
