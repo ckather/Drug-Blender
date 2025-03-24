@@ -1,36 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import numpy as np
-
-# ===============================
-# Part 1: Generate Sample CSV Files
-# ===============================
-def generate_sample_csv_files():
-    # Define file names and their specific extra columns (besides the unique ID)
-    samples = {
-        "sample1.csv": {"A": lambda i: np.random.randint(0, 100), "B": lambda i: np.random.choice(["X", "Y", "Z"])},
-        "sample2.csv": {"C": lambda i: np.random.rand(), "D": lambda i: np.random.choice(["Red", "Green", "Blue"])},
-        "sample3.csv": {"E": lambda i: np.random.randint(100, 200), "F": lambda i: np.random.choice(["M", "F"])},
-        "sample4.csv": {"G": lambda i: np.random.choice(["Yes", "No"]), "H": lambda i: np.random.rand() * 50},
-    }
-    
-    for filename, col_funcs in samples.items():
-        if not os.path.exists(filename):
-            data = {"unique_id": list(range(1, 101))}  # unique IDs 1 to 100
-            # Add extra columns with generated data
-            for col, func in col_funcs.items():
-                data[col] = [func(i) for i in range(1, 101)]
-            df = pd.DataFrame(data)
-            df.to_csv(filename, index=False)
-            print(f"Generated {filename}")
-
-# Generate sample CSV files if they don't exist
-generate_sample_csv_files()
-
-# ===============================
-# Part 2: Streamlit Drug Blender App
-# ===============================
 
 # --- Helper function to read a file based on its extension ---
 def load_file(uploaded_file):
@@ -87,8 +57,9 @@ if app_mode == "Data Ingestion":
     st.title("Pharmaceutical Data Dashboard (Drug Blender)")
     st.subheader("Data Ingestion")
     st.write(
-        "Upload between 1 and 5 CSV or Excel files. Each file should have a unique identifier (e.g., a unique number in 'unique_id') and different additional columns. "
-        "When combined, rows from each file will be highlighted in a unique color."
+        "Upload between 1 and 5 CSV or Excel files. Each file should have a `unique_id` column, "
+        "plus additional columns. Rows will be combined and then **sorted by `unique_id`**, so you can see "
+        "all rows for ID=1 together, then ID=2, etc."
     )
 
     with st.container():
@@ -120,24 +91,30 @@ if app_mode == "Data Ingestion":
                 # Merge the files by concatenating them (stacking rows).
                 master_df = pd.concat(df_list, ignore_index=True)
                 
+                # --- SORT by unique_id so all rows for each ID appear together ---
+                if "unique_id" in master_df.columns:
+                    master_df = master_df.sort_values(by="unique_id").reset_index(drop=True)
+                else:
+                    st.warning("No column named 'unique_id' found. Sorting may not work as intended.")
+                
                 # Save the master DataFrame and the color map in session state.
                 st.session_state["master_df"] = master_df
                 st.session_state["color_map"] = color_map
                 
-                st.success("Files uploaded and combined successfully!")
-                st.write("**Preview of Combined Data:**")
-                st.dataframe(master_df.head())
+                st.success("Files uploaded, combined, and sorted successfully!")
+                st.write("**Preview of Combined & Sorted Data:**")
+                st.dataframe(master_df.head(20))  # Show a larger preview if you like
             except Exception as e:
                 st.error(f"An error occurred while processing the files: {e}")
     else:
-        st.info("Please upload at least one file to get started.\n\n(You can use the generated CSV files: sample1.csv, sample2.csv, sample3.csv, sample4.csv.)")
+        st.info("Please upload at least one file to get started.")
 
 # ---------------------------
 # 2) MASTER DOCUMENT PAGE
 # ---------------------------
 elif app_mode == "Master Document":
     st.header("Master Document")
-    st.write("Below is the combined dataset with each file’s rows highlighted in a unique color. A legend of colors to file names is provided below.")
+    st.write("Below is the combined dataset, sorted by `unique_id`, with each file’s rows highlighted in a unique color.")
 
     if "master_df" in st.session_state and "color_map" in st.session_state:
         master_df = st.session_state["master_df"]
@@ -147,7 +124,12 @@ elif app_mode == "Master Document":
         st.markdown('<div class="legend-box">', unsafe_allow_html=True)
         st.write("**Legend:**")
         for file_name, color in color_map.items():
-            st.markdown(f'<div class="legend-item"><span style="display:inline-block;width:20px;height:20px;background-color:{color};margin-right:10px;"></span>{file_name}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="legend-item">'
+                f'<span style="display:inline-block;width:20px;height:20px;background-color:{color};'
+                f'margin-right:10px;"></span>{file_name}</div>',
+                unsafe_allow_html=True
+            )
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Style the DataFrame to apply color-coding to each row.
@@ -175,12 +157,11 @@ elif app_mode == "About":
         This dashboard, affectionately known as the **Drug Blender**, integrates multiple CSV or Excel files into a single, unified master document.
         Each file’s data is color-coded so you can easily see which file each row came from.
         
-        **Key Features:**
+        **Key Features**:
         - Upload between 1 and 5 files.
-        - Combine them into a single table with each file’s rows uniquely highlighted.
-        - A legend is provided on the Master Document page to map colors to file names.
+        - Combine them into a single table, then **sort by `unique_id`** so rows for the same ID appear together.
+        - A legend maps each file to its unique highlight color.
         - Easily view summary statistics for numeric data.
         
         Built with Python and Streamlit.
     """)
-
