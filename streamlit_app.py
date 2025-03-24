@@ -31,8 +31,7 @@ def check_expected_columns(df, file_name):
 
 def color_rows_by_source(row, color_map):
     """
-    Returns a list of CSS styles for each cell in the row,
-    based on the file indicated in 'source_file'.
+    Returns a list of CSS styles for each cell in the row based on the file indicated in 'source_file'.
     """
     file_name = row["source_file"]
     color = color_map.get(file_name, "#FFFFFF")
@@ -82,8 +81,7 @@ if app_mode == "Data Ingestion":
     st.subheader("Data Ingestion")
     st.write(
         "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have exactly two columns:** "
-        "`unique_id` and `Data` (using the unique ID you created). The app will concatenate them, add a "
-        "`source_file` column, and sort by `unique_id`."
+        "`unique_id` and `Data`. The app will concatenate them, add a `source_file` column, and sort by `unique_id`."
     )
 
     with st.container():
@@ -101,30 +99,31 @@ if app_mode == "Data Ingestion":
         else:
             try:
                 df_list = []
-                # Color palette for up to 5 files
+                # Define a color palette for up to 5 files
                 color_palette = ["#FFCFCF", "#CFFFCF", "#CFCFFF", "#FFFACF", "#FFCFFF"]
                 color_map = {}
                 
                 for i, file in enumerate(uploaded_files):
                     df = load_file(file)
-                    # Verify the file has exactly the expected columns
+                    
+                    # Check that the file has exactly the expected columns.
                     check_expected_columns(df, file.name)
                     
-                    # Keep only the two columns (order doesn't matter since set equality was checked)
+                    # Keep only these 2 columns
                     df = df[["unique_id", "Data"]]
                     
-                    # Add source_file column
+                    # Add a 'source_file' column
                     df["source_file"] = file.name
                     color_map[file.name] = color_palette[i]
                     
                     df_list.append(df)
                 
-                # Concatenate all DataFrames
+                # Concatenate (append) all data
                 master_df = pd.concat(df_list, ignore_index=True)
                 # Sort by unique_id so that all rows for each unique_id appear consecutively
                 master_df = master_df.sort_values(by="unique_id", ignore_index=True)
                 
-                # Store master_df and color_map in session state
+                # Store in session_state
                 st.session_state["master_df"] = master_df
                 st.session_state["color_map"] = color_map
                 
@@ -150,7 +149,7 @@ elif app_mode == "Master Document":
         master_df = st.session_state["master_df"]
         color_map = st.session_state["color_map"]
         
-        # Display Legend
+        # --- Legend ---
         st.markdown('<div class="legend-box">', unsafe_allow_html=True)
         st.write("**Legend (File → Color):**")
         for file_name, color in color_map.items():
@@ -163,7 +162,7 @@ elif app_mode == "Master Document":
             )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Color-code rows based on source_file
+        # --- Color-code rows by source_file ---
         def apply_color(row):
             return [f"background-color: {color_map[row['source_file']]}" for _ in row]
         
