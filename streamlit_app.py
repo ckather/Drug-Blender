@@ -3,22 +3,24 @@ import pandas as pd
 import os
 from functools import reduce
 
-# Set page configuration as the very first command.
-st.set_page_config(page_title="Drug Blender Workflow", layout="wide")
-
 # =================================
 # PAGE NAVIGATION VIA SIDEBAR
 # =================================
 def set_page(page_name: str):
     st.session_state["current_page"] = page_name
+    st.experimental_rerun()  # Force a rerun to update the page
 
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "Data Ingestion"
 
+# List of pages in the sidebar
 PAGES = ["Data Ingestion", "Master Document", "Analysis", "About"]
+
+# Create the sidebar radio for navigation
 selected_page = st.sidebar.radio("Navigation", PAGES, index=PAGES.index(st.session_state["current_page"]))
 if selected_page != st.session_state["current_page"]:
     st.session_state["current_page"] = selected_page
+    st.experimental_rerun()
 
 # =================================
 # HELPER FUNCTIONS
@@ -78,7 +80,7 @@ def data_ingestion_page():
     st.subheader("Data Ingestion")
     st.write(
         "Upload 1–5 files (CSV, XLSX, or XLS). **Each file must have a key column named 'ID'** "
-        "plus one or more additional data columns. The app will rename non‑ID columns to include the file name, "
+        "plus one or more additional data columns. We'll rename non‑ID columns to include the file name, "
         "merge all files horizontally (outer join) on 'ID', sort by 'ID', and display one row per ID."
     )
 
@@ -209,6 +211,7 @@ def about_page():
         - Merged into one row per 'ID' (outer join) with side‑by‑side columns.
         - Downloadable merged CSV.
         - Basic numeric and missing-data analysis.
+        - Navigation via sidebar and “Continue” buttons.
     """)
 
 def main():
@@ -224,3 +227,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
