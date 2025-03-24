@@ -8,10 +8,9 @@ import os
 
 def load_file(uploaded_file):
     """
-    Reads an uploaded file (CSV or Excel) into a Pandas DataFrame.
+    Reads an uploaded file (CSV, XLSX, or XLS) into a Pandas DataFrame.
     Expects columns: [unique_id, Data].
     """
-    # Determine the file extension
     _, extension = os.path.splitext(uploaded_file.name.lower())
     
     if extension == ".csv":
@@ -156,7 +155,7 @@ elif app_mode == "Master Document":
         for file_name, color in color_map.items():
             st.markdown(
                 f'<div class="legend-item">'
-                f'<span style="display:inline-block;width:20px;height:20px;background-color:{color};margin-right:10px;'></span>'
+                f'<span style="display:inline-block;width:20px;height:20px;background-color:{color};margin-right:10px;"></span>'
                 f'{file_name}'
                 f'</div>',
                 unsafe_allow_html=True
