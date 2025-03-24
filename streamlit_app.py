@@ -65,13 +65,18 @@ def style_merged_df(df, file_columns, color_map):
     Styles the merged DataFrame so that each cell in a data column gets a background color
     based on which file it came from.
     """
-    # Create a dictionary mapping each column (except "ID") to its style string
+    # Build a dictionary mapping each non-ID column to its style string
     styles = {}
     for col in df.columns:
         if col != "ID":
             styles[col] = cell_color(col, file_columns, color_map)
-    # Apply style to each cell in the non-key columns
-    styled = df.style.applymap(lambda v, col: styles.get(col, ""), subset=df.columns.difference(["ID"]))
+    
+    # Now apply style for each non-ID column individually
+    styled = df.style
+    for col in df.columns:
+        if col != "ID":
+            # For each cell in column col, assign the style string from styles[col]
+            styled = styled.applymap(lambda v: styles[col], subset=[col])
     return styled
 
 # -------------------------
@@ -200,7 +205,6 @@ elif app_mode == "Master Document":
         
         # --- Style the merged DataFrame ---
         styled_df = style_merged_df(master_df, file_columns, color_map)
-        # Use render() instead of to_html() to avoid errors
         st.write(styled_df.render(), unsafe_allow_html=True)
         
         numeric_cols = master_df.select_dtypes(include=["int", "float"]).columns
